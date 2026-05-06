@@ -70,6 +70,15 @@ func main() {
 		log.Fatal("rabbit subscribe:", err)
 	}
 
+	if err := messaging.Subscribe(ch, messaging.UserExchange, messaging.QueueAuditUserEvents, func(msg messaging.Message) {
+		slog.Info("audit: received user event", "type", msg.Type)
+		if err := pushToLoki(lokiURL, msg.Type, msg.Payload); err != nil {
+			slog.Error("audit: loki push", "err", err)
+		}
+	}); err != nil {
+		log.Fatal("rabbit subscribe:", err)
+	}
+
 	if err := messaging.Subscribe(ch, messaging.CaptchaExchange, messaging.QueueAuditCaptchaEvents, func(msg messaging.Message) {
 		slog.Info("audit: received captcha event", "type", msg.Type)
 		if err := pushToLoki(lokiURL, msg.Type, msg.Payload); err != nil {
@@ -79,7 +88,7 @@ func main() {
 		log.Fatal("rabbit subscribe:", err)
 	}
 
-	slog.Info("audit service listening", "exchanges", []string{messaging.TaskExchange, messaging.CaptchaExchange})
+	slog.Info("audit service listening", "exchanges", []string{messaging.TaskExchange, messaging.UserExchange, messaging.CaptchaExchange})
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

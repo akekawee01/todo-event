@@ -30,7 +30,7 @@ func main() {
 			var user userdomain.User
 			json.Unmarshal(msg.Payload, &user)
 			slog.Info("step 1/4: verification email sent",
-				"to", user.Email, "name", user.Name, "token", user.VerificationToken)
+				"user_id", user.ID, "to", user.Email, "name", user.Name, "token", user.VerificationToken)
 
 		case userdomain.EventEmailVerified:
 			var user userdomain.User
@@ -43,17 +43,17 @@ func main() {
 			json.Unmarshal(msg.Payload, &user)
 			if user.CreditApproved {
 				slog.Info("step 3/4: credit approved — complete your profile",
-					"score", user.CreditScore)
+					"user_id", user.ID, "score", user.CreditScore)
 			} else {
 				slog.Info("step 3/4: credit denied — onboarding blocked",
-					"score", user.CreditScore)
+					"user_id", user.ID, "score", user.CreditScore)
 			}
 
 		case userdomain.EventProfileCompleted:
 			var user userdomain.User
 			json.Unmarshal(msg.Payload, &user)
 			slog.Info("step 4/4: onboarding complete — welcome!",
-				"name", user.Name, "bio", user.Bio)
+				"user_id", user.ID, "name", user.Name, "bio", user.Bio)
 
 		case userdomain.EventContactUpdated:
 			var user userdomain.User

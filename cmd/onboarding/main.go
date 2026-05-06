@@ -6,6 +6,8 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gofiber/fiber/v2"
@@ -51,6 +53,7 @@ func main() {
 	defer conn.Close()
 
 	if err := messaging.DeclareTopology(ch, []messaging.Binding{
+		{Exchange: messaging.UserExchange, Queue: messaging.QueueAuditUserEvents},
 		{Exchange: messaging.UserExchange, Queue: messaging.QueueWelcomeUserEvents},
 		{Exchange: messaging.UserExchange, Queue: messaging.QueueCreditUserEvents},
 		{Exchange: messaging.UserExchange, Queue: messaging.QueueAuthenUserEvents},
@@ -106,5 +109,22 @@ func main() {
 	app.Post("/users/:id/verify-email", userHandler.VerifyEmail)
 	app.Post("/users/:id/complete-profile", userHandler.CompleteProfile)
 
-	log.Fatal(app.Listen(":3002"))
+	// Graceful shutdown
+	go func() {
+		slog.Info("onboarding service listening", "port", "3002")
+		if err := app.Listen(":3002"); err != nil {
+			log.Fatal("fiber:", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("onboarding service shutting down...")
+
+	if err := app.ShutdownWithTimeout(10); err != nil {
+		slog.Error("onboarding: fiber shutdown error", "err", err)
+	}
+
+	slog.Info("onboarding service stopped")
 }

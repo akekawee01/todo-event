@@ -44,6 +44,7 @@ func DeclareExchange(ch *amqp.Channel, name string) error {
 
 const (
 	QueueAuditTaskEvents         = "audit.task.events"
+	QueueAuditUserEvents         = "audit.user.events"
 	QueueWelcomeUserEvents       = "welcome.user.events"
 	QueueCreditUserEvents        = "credit.user.events"
 	QueueAuthenUserEvents        = "authen.user.events"
@@ -84,14 +85,26 @@ func NewPublisher(ch *amqp.Channel, exchange string) *Publisher {
 func (p *Publisher) Publish(ctx context.Context, e event.Event) {
 	payload, _ := json.Marshal(e.Payload)
 	data, _ := json.Marshal(Message{Type: e.Type, Payload: payload})
-	err := p.ch.PublishWithContext(ctx, p.exchange, "", false, false, amqp.Publishing{
-		ContentType:  "application/json",
-		DeliveryMode: amqp.Persistent,
-		Body:         data,
-	})
-	if err != nil {
-		slog.Error("rabbit: publish error", "exchange", p.exchange, "err", err)
+
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := p.ch.PublishWithContext(ctx, p.exchange, "", false, false, amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Body:         data,
+		})
+		if err == nil {
+			return
+		}
+
+		slog.Error("rabbit: publish error", "exchange", p.exchange, "attempt", attempt+1, "max", maxRetries, "err", err)
+
+		if attempt < maxRetries-1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
+
+	slog.Error("rabbit: publish failed after retries", "exchange", p.exchange, "event_type", e.Type)
 }
 
 var _ event.Publisher = (*Publisher)(nil)
