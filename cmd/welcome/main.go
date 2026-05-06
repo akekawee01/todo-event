@@ -18,9 +18,9 @@ func main() {
 		amqpURL = "amqp://guest:guest@localhost:5672/"
 	}
 
-	conn, ch, err := messaging.Connect(amqpURL)
+	conn, ch, err := messaging.ConnectWithRetry(amqpURL, 10, 2)
 	if err != nil {
-		log.Fatal("rabbit:", err)
+		log.Fatal("rabbit: connection failed after retries:", err)
 	}
 	defer conn.Close()
 

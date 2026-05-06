@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -23,6 +24,20 @@ func Connect(url string) (*amqp.Connection, *amqp.Channel, error) {
 	return conn, ch, nil
 }
 
+func ConnectWithRetry(url string, maxRetries int, delaySeconds int) (*amqp.Connection, *amqp.Channel, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		conn, ch, err := Connect(url)
+		if err == nil {
+			return conn, ch, nil
+		}
+		lastErr = err
+		slog.Info("rabbit: connection failed, retrying", "attempt", i+1, "max", maxRetries, "err", err)
+		time.Sleep(time.Duration(delaySeconds) * time.Second)
+	}
+	return nil, nil, lastErr
+}
+
 func DeclareExchange(ch *amqp.Channel, name string) error {
 	return ch.ExchangeDeclare(name, "fanout", true, false, false, false, nil)
 }
@@ -33,6 +48,8 @@ const (
 	QueueCreditUserEvents        = "credit.user.events"
 	QueueAuthenUserEvents        = "authen.user.events"
 	QueueOnboardingCreditResults = "onboarding.credit.results"
+	QueueProjectionCaptchaEvents = "projection.captcha.events"
+	QueueAuditCaptchaEvents      = "audit.captcha.events"
 )
 
 type Binding struct {

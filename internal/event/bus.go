@@ -43,3 +43,19 @@ func (b *EventBus) Publish(ctx context.Context, e Event) {
 }
 
 var _ Publisher = (*EventBus)(nil)
+
+type FanoutPublisher struct {
+	publishers []Publisher
+}
+
+func NewFanoutPublisher(pubs ...Publisher) Publisher {
+	return &FanoutPublisher{publishers: pubs}
+}
+
+func (f *FanoutPublisher) Publish(ctx context.Context, e Event) {
+	for _, p := range f.publishers {
+		p.Publish(ctx, e)
+	}
+}
+
+var _ Publisher = (*FanoutPublisher)(nil)

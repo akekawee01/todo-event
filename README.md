@@ -15,6 +15,71 @@ Modular monolith with Ports & Adapters architecture, append-only persistence, an
 
 ## Architecture
 
+### Communication Layers
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Frontend Layer                                │
+│  ┌──────────────────┐              ┌──────────────────┐                │
+│  │   Task UI        │              │  Onboarding UI   │                │
+│  │   web/vue        │              │  web/onboarding  │                │
+│  │   (Browser)      │              │  (Browser)       │                │
+│  └────────┬─────────┘              └────────┬─────────┘                │
+│           │                                 │                          │
+│           │         HTTP (REST/JSON)        │                          │
+│           └───────────────┬─────────────────┘                          │
+│                           ▼                                            │
+└───────────────────────────┼────────────────────────────────────────────┘
+                            │
+┌───────────────────────────┼────────────────────────────────────────────┐
+│  Backend API Layer        ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                      HTTP Handlers                               │   │
+│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐ │   │
+│  │  │  cmd/api :3000   │  │ cmd/onboarding   │  │  cmd/captcha     │ │ │   │
+│  │  │  /auth/*         │  │  :3002 /users/*  │  │  :3010 /captcha/*│ │ │   │
+│  │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘ │ │   │
+│  └───────────┼────────────────────┼─────────────────────┼───────────┘ │   │
+└──────────────┼────────────────────┼─────────────────────┼──────────────┘
+               │                     │                     │
+               │                     │                     │
+               ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Message Bus Layer (RabbitMQ)                        │
+│  ════════════════════════════════════════════════════════════════════════│
+│  ║  task.events    ─► audit.task.events      ─► cmd/audit              ║
+│  ║  user.events    ─► welcome.user.events    ─► cmd/welcome            ║
+│  ║                 ─► credit.user.events     ─► cmd/credit             ║
+│  ║                 ─► authen.user.events     ─► cmd/api                ║
+│  ║  credit.results ─► onboarding.credit.results ─► cmd/onboarding       ║
+│  ════════════════════════════════════════════════════════════════════════│
+│                                                                          │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐      │
+│  │  cmd/welcome     │  │  cmd/credit      │  │  cmd/audit       │      │
+│  │  (subscriber)    │  │  (subscriber)    │  │  (subscriber)    │      │
+│  └──────────────────┘  └──────────────────┘  └──────────┬─────────┘      │
+│                                                            │             │
+└────────────────────────────────────────────────────────────┼─────────────┘
+                                                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Observability Layer                                 │
+│  ┌──────────────────┐        ┌──────────────────┐                        │
+│  │  Loki :3100      │◄───────│  cmd/audit       │                        │
+│  │  (Log Aggregator)│        │  (publisher)     │                        │
+│  └────────┬─────────┘        └──────────────────┘                        │
+│           ▼                                                                │
+│  ┌──────────────────┐                                                      │
+│  │  Grafana :3001   │                                                      │
+│  │  (Dashboard)     │                                                      │
+│  └──────────────────┘                                                      │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Points:**
+- **Frontend → Backend**: HTTP only (REST API)
+- **Backend → Services**: AMQP via RabbitMQ (async pub/sub)
+- **Frontend never connects to RabbitMQ directly** — by design for security and simplicity
+
 ### Service topology
 
 HTTP from the browsers, fanout pub/sub over RabbitMQ between services, **per-service storage** (MongoDB for api/captcha, MySQL for onboarding), audit stream to Loki/Grafana.
@@ -291,3 +356,52 @@ Ctrl-C the six Go processes (and any frontends), then:
 docker compose down            # keeps volumes
 docker compose down -v         # also wipes Mongo + MySQL + RabbitMQ data
 ```
+
+## FAQ
+
+### Why doesn't the frontend connect to RabbitMQ directly?
+
+Browser-based frontends **should not** connect to message queues like RabbitMQ directly. Here's why:
+
+| Concern | Explanation |
+|---|---|
+| **Protocol** | AMQP is a TCP protocol — browsers don't support it natively. You'd need a WebSocket bridge or WebAssembly library. |
+| **Security** | Opening AMQP ports to the public internet is a severe security risk. Anyone could publish/consume messages. |
+| **Complexity** | Frontend code shouldn't be concerned with messaging infrastructure, connection management, or message serialization. |
+| **State** | HTTP gives immediate request/response. RabbitMQ is async — you'd need WebSocket or polling to consume events. |
+
+**Best Practice:**
+```
+Frontend (Browser)
+    ↓ HTTP
+Backend API (Go)
+    ↓ AMQP
+RabbitMQ → Other Services
+```
+
+The backend acts as a bridge: HTTP in, AMQP out. Frontends stay simple and stateless.
+
+### Is this microservices or modular monolith?
+
+**Microservices.** Each `cmd/*` is an independently deployable binary:
+- Separate HTTP ports (3000, 3002, 3010)
+- Separate database access patterns (MongoDB vs MySQL)
+- Async communication via RabbitMQ (no direct service-to-service calls)
+
+The term "modular" refers to the internal package organization (`internal/*` as shared libraries), but the runtime topology is microservices.
+
+### Can I run services without Docker?
+
+Yes, but you'll need to run MongoDB, MySQL, and RabbitMQ locally. Docker Compose is recommended for development as it handles all infrastructure dependencies.
+
+```bash
+# Option 1: Docker Compose (recommended)
+docker compose up -d
+
+# Option 2: Run services only (requires manual infrastructure setup)
+go run ./cmd/api
+go run ./cmd/onboarding
+# ... etc
+```
+
+

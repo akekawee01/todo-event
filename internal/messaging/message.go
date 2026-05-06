@@ -6,6 +6,7 @@ const (
 	TaskExchange         = "task.events"
 	UserExchange         = "user.events"
 	CreditResultExchange = "credit.results"
+	CaptchaExchange      = "captcha.events"
 )
 
 type Message struct {
