@@ -21,7 +21,8 @@ const (
 	EventCreditScored     = "user.credit_scored"
 	EventProfileCompleted = "user.profile_completed"
 	EventUserActivated    = "user.activated"
-	EventContactUpdated   = "user.contact_updated"
+	EventProfileUpdated   = "user.profile_updated"
+	EventContactUpdated   = EventProfileUpdated
 )
 
 type User struct {
@@ -69,6 +70,8 @@ type ContactUpdatedPayload struct {
 	Email  string `json:"email"`
 	Bio    string `json:"bio"`
 }
+
+type ProfileUpdatedPayload = ContactUpdatedPayload
 
 type UserEvent struct {
 	ID          string          `db:"id"           json:"id"`

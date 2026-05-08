@@ -116,11 +116,11 @@ func (s *Service) UpdateContact(ctx context.Context, id, name, email, bio string
 		return mo.Err[domain.User](ErrEmailTaken)
 	}
 	next := current.MustGet().WithContact(name, email, bio)
-	payload := domain.ContactUpdatedPayload{UserID: id, Name: name, Email: email, Bio: bio}
-	if r := s.repo.Append(ctx, id, domain.EventContactUpdated, payload); r.IsError() {
+	payload := domain.ProfileUpdatedPayload{UserID: id, Name: name, Email: email, Bio: bio}
+	if r := s.repo.Append(ctx, id, domain.EventProfileUpdated, payload); r.IsError() {
 		return mo.Err[domain.User](r.Error())
 	}
-	s.publisher.Publish(ctx, event.Event{Type: domain.EventContactUpdated, Payload: next})
+	s.publisher.Publish(ctx, event.Event{Type: domain.EventProfileUpdated, Payload: next})
 	return mo.Ok(next)
 }
 

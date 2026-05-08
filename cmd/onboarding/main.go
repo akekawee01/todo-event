@@ -92,7 +92,7 @@ func main() {
 	userBus.Subscribe(userdomain.EventEmailVerified, userProjection)
 	userBus.Subscribe(userdomain.EventCreditScored, userProjection)
 	userBus.Subscribe(userdomain.EventProfileCompleted, userProjection)
-	userBus.Subscribe(userdomain.EventContactUpdated, userProjection)
+	userBus.Subscribe(userdomain.EventProfileUpdated, userProjection)
 
 	userPublisher := &multiPublisher{publishers: []event.Publisher{
 		userBus,
@@ -141,9 +141,9 @@ func main() {
 		slog.Info("step 4/4: onboarding complete — welcome!", "name", user.Name, "bio", user.Bio)
 		return nil
 	})
-	userBus.Subscribe(userdomain.EventContactUpdated, func(_ context.Context, e event.Event) error {
+	userBus.Subscribe(userdomain.EventProfileUpdated, func(_ context.Context, e event.Event) error {
 		user, _ := e.Payload.(userdomain.User)
-		slog.Info("contact updated", "user_id", user.ID, "name", user.Name, "email", user.Email)
+		slog.Info("profile updated", "user_id", user.ID, "name", user.Name, "email", user.Email)
 		return nil
 	})
 

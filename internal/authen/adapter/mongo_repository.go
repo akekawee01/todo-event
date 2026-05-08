@@ -82,6 +82,32 @@ func (r *MongoRepository) CreateCredential(ctx context.Context, cred domain.Cred
 	return mo.Ok(struct{}{})
 }
 
+func (r *MongoRepository) UpdateCredentialEmail(ctx context.Context, userID, email string) mo.Result[struct{}] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[struct{}](err)
+	}
+	filter := bson.D{{Key: "user_id", Value: userID}}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "email", Value: email}}}}
+	if _, err := db.Collection("auth_credentials").UpdateOne(ctx, filter, update); err != nil {
+		return mo.Err[struct{}](err)
+	}
+	return mo.Ok(struct{}{})
+}
+
+func (r *MongoRepository) UpdateCredentialPassword(ctx context.Context, userID, passwordHash string) mo.Result[struct{}] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[struct{}](err)
+	}
+	filter := bson.D{{Key: "user_id", Value: userID}}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "password_hash", Value: passwordHash}}}}
+	if _, err := db.Collection("auth_credentials").UpdateOne(ctx, filter, update); err != nil {
+		return mo.Err[struct{}](err)
+	}
+	return mo.Ok(struct{}{})
+}
+
 func (r *MongoRepository) FindCredentialByEmail(ctx context.Context, email string) mo.Result[domain.Credential] {
 	db, err := r.db()
 	if err != nil {
@@ -89,6 +115,18 @@ func (r *MongoRepository) FindCredentialByEmail(ctx context.Context, email strin
 	}
 	var cred domain.Credential
 	if err := db.Collection("auth_credentials").FindOne(ctx, bson.D{{Key: "email", Value: email}}).Decode(&cred); err != nil {
+		return mo.Err[domain.Credential](err)
+	}
+	return mo.Ok(cred)
+}
+
+func (r *MongoRepository) FindCredentialByUserID(ctx context.Context, userID string) mo.Result[domain.Credential] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[domain.Credential](err)
+	}
+	var cred domain.Credential
+	if err := db.Collection("auth_credentials").FindOne(ctx, bson.D{{Key: "user_id", Value: userID}}).Decode(&cred); err != nil {
 		return mo.Err[domain.Credential](err)
 	}
 	return mo.Ok(cred)
@@ -131,6 +169,22 @@ func (r *MongoRepository) DeactivateSession(ctx context.Context, token string) m
 	filter := bson.D{{Key: "token", Value: token}}
 	update := bson.D{{Key: "$set", Value: bson.D{{Key: "active", Value: false}}}}
 	if _, err := db.Collection("auth_sessions").UpdateOne(ctx, filter, update); err != nil {
+		return mo.Err[struct{}](err)
+	}
+	return mo.Ok(struct{}{})
+}
+
+func (r *MongoRepository) DeactivateSessionsByUserID(ctx context.Context, userID string) mo.Result[struct{}] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[struct{}](err)
+	}
+	filter := bson.D{
+		{Key: "user_id", Value: userID},
+		{Key: "active", Value: true},
+	}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "active", Value: false}}}}
+	if _, err := db.Collection("auth_sessions").UpdateMany(ctx, filter, update); err != nil {
 		return mo.Err[struct{}](err)
 	}
 	return mo.Ok(struct{}{})

@@ -27,6 +27,7 @@
           <div v-if="u.bio" class="user-bio">{{ u.bio }}</div>
           <div class="user-actions-row">
             <button class="btn-link" @click="startEdit(u)">Edit</button>
+            <button class="btn-link" @click="resetPwd(u)">Reset Password</button>
             <button class="btn-link" @click="toggleHistory(u)">
               {{ historyFor === u.id ? 'Hide history' : 'History' }}
             </button>
@@ -67,11 +68,20 @@
 
     <button class="btn-secondary" @click="load" :disabled="loading">Refresh</button>
   </div>
+
+  <div v-if="resetPasswordFor && newPassword" class="password-modal-overlay" @click="resetPasswordFor = null; newPassword = null">
+    <div class="password-modal" @click.stop>
+      <h3>Password Reset</h3>
+      <p class="password-label">New password for {{ users.find(u => u.id === resetPasswordFor)?.email }}:</p>
+      <div class="password-display">{{ newPassword }}</div>
+      <button class="btn-primary" @click="resetPasswordFor = null; newPassword = null">Close</button>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { listActivated, updateContact, getUserHistory } from '../api.ts'
+import { listActivated, updateContact, getUserHistory, resetPassword } from '../api.ts'
 import type { User, UserEvent } from '../types.ts'
 
 const users = ref<User[]>([])
@@ -87,6 +97,10 @@ const historyFor = ref<string | null>(null)
 const historyEvents = ref<UserEvent[]>([])
 const historyLoading = ref(false)
 const historyError = ref<string | null>(null)
+
+const resetPasswordFor = ref<string | null>(null)
+const newPassword = ref<string | null>(null)
+const resettingPassword = ref(false)
 
 async function load() {
   loading.value = true
@@ -151,6 +165,22 @@ async function toggleHistory(u: User) {
     historyError.value = e?.message ?? 'Failed to load history'
   } finally {
     historyLoading.value = false
+  }
+}
+
+async function resetPwd(u: User) {
+  if (!confirm(`Reset password for ${u.email}?`)) return
+  resettingPassword.value = true
+  resetPasswordFor.value = u.id
+  newPassword.value = null
+  try {
+    const result = await resetPassword(u.id)
+    newPassword.value = result.new_password
+  } catch (e: any) {
+    alert(e?.message ?? 'Failed to reset password')
+    resetPasswordFor.value = null
+  } finally {
+    resettingPassword.value = false
   }
 }
 

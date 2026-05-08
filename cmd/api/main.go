@@ -100,16 +100,28 @@ func main() {
 
 	// user.activated arrives from cmd/onboarding via RabbitMQ → create auth credential
 	if err := messaging.Subscribe(ch, messaging.UserExchange, messaging.QueueAuthenUserEvents, func(msg messaging.Message) {
-		if msg.Type != userdomain.EventUserActivated {
+		if msg.Type != userdomain.EventUserActivated && msg.Type != userdomain.EventProfileUpdated {
 			return
 		}
-		var p userdomain.UserActivatedPayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			slog.Error("api: user.activated unmarshal", "err", err)
-			return
-		}
-		if r := authenService.ActivateUser(context.Background(), p.UserID, p.Email, p.Name); r.IsError() {
-			slog.Error("api: user.activated credential creation failed", "err", r.Error())
+		switch msg.Type {
+		case userdomain.EventUserActivated:
+			var p userdomain.UserActivatedPayload
+			if err := json.Unmarshal(msg.Payload, &p); err != nil {
+				slog.Error("api: user.activated unmarshal", "err", err)
+				return
+			}
+			if r := authenService.ActivateUser(context.Background(), p.UserID, p.Email, p.Name); r.IsError() {
+				slog.Error("api: user.activated credential creation failed", "err", r.Error())
+			}
+		case userdomain.EventProfileUpdated:
+			var p userdomain.User
+			if err := json.Unmarshal(msg.Payload, &p); err != nil {
+				slog.Error("api: user.profile_updated unmarshal", "err", err)
+				return
+			}
+			if r := authenService.UpdateUserProfile(context.Background(), p.ID, p.Email, p.Name); r.IsError() {
+				slog.Error("api: user.profile_updated credential update failed", "err", r.Error())
+			}
 		}
 	}); err != nil {
 		log.Fatal("rabbit subscribe authen.user.events:", err)
@@ -133,6 +145,7 @@ func main() {
 	app.Post("/auth/register", authenHandler.RegisterCredential)
 	app.Post("/auth/login", authenHandler.Login)
 	app.Post("/auth/logout", authenHandler.Logout)
+	app.Post("/users/:id/reset-password", authenHandler.ResetPassword)
 
 	tasks := app.Group("/tasks", authMiddleware)
 	tasks.Post("/", taskHandler.Create)

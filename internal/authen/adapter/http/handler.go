@@ -86,3 +86,19 @@ func (h *Handler) ValidateToken(c *fiber.Ctx) error {
 	}
 	return c.JSON(result.MustGet())
 }
+
+func (h *Handler) ResetPassword(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	if userID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing user id"})
+	}
+	result := h.useCase.ResetPassword(c.Context(), userID)
+	if result.IsError() {
+		if errors.Is(result.Error(), application.ErrInvalidCredentials) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": result.Error().Error()})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
+	newPassword := result.MustGet()
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"new_password": newPassword})
+}

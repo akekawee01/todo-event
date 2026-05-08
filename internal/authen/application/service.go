@@ -2,8 +2,10 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log/slog"
+	"math/big"
 	"time"
 
 	"github.com/samber/mo"
@@ -16,10 +18,10 @@ import (
 )
 
 var (
-	ErrInvalidCredentials   = errors.New("invalid email or password")
-	ErrEmailAlreadyExists   = errors.New("email already registered")
-	ErrSessionNotFound      = errors.New("session not found")
-	ErrSessionExpired       = errors.New("session has expired")
+	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrEmailAlreadyExists = errors.New("email already registered")
+	ErrSessionNotFound    = errors.New("session not found")
+	ErrSessionExpired     = errors.New("session has expired")
 )
 
 const sessionTTL = 24 * time.Hour
@@ -73,6 +75,86 @@ func (s *Service) ActivateUser(ctx context.Context, userID, email, name string) 
 	}
 	slog.Info("auth: user activated — credential created", "email", email, "name", name, "temp_password", tempPassword)
 	return mo.Ok(cred)
+}
+
+func (s *Service) UpdateUserProfile(ctx context.Context, userID, email, name string) mo.Result[struct{}] {
+	if userID == "" || email == "" {
+		return mo.Err[struct{}](ErrInvalidCredentials)
+	}
+	if r := s.repo.UpdateCredentialEmail(ctx, userID, email); r.IsError() {
+		return mo.Err[struct{}](r.Error())
+	}
+	if r := s.repo.DeactivateSessionsByUserID(ctx, userID); r.IsError() {
+		return mo.Err[struct{}](r.Error())
+	}
+	slog.Info("auth: user profile updated — credential email changed and sessions invalidated", "user_id", userID, "email", email, "name", name)
+	return mo.Ok(struct{}{})
+}
+
+func (s *Service) ResetPassword(ctx context.Context, userID string) mo.Result[string] {
+	if userID == "" {
+		return mo.Err[string](ErrInvalidCredentials)
+	}
+
+	// Generate a random 10-character password
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	password := make([]byte, 10)
+	for i := range password {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return mo.Err[string](err)
+		}
+		password[i] = charset[n.Int64()]
+	}
+	newPassword := string(password)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return mo.Err[string](err)
+	}
+	if r := s.repo.UpdateCredentialPassword(ctx, userID, string(hash)); r.IsError() {
+		return mo.Err[string](r.Error())
+	}
+
+	// Find credential to get email for the event
+	credResult := s.repo.FindCredentialByUserID(ctx, userID)
+	var cred domain.Credential
+	if credResult.IsError() {
+		slog.Warn("auth: password reset — could not find credential to get email", "user_id", userID, "err", credResult.Error().Error())
+		cred = domain.Credential{Email: "unknown"}
+	} else {
+		cred = credResult.MustGet()
+	}
+
+	if r := s.repo.DeactivateSessionsByUserID(ctx, userID); r.IsError() {
+		return mo.Err[string](r.Error())
+	}
+
+	// Append event to event store
+	eventID := bson.NewObjectID()
+	payload := domain.PasswordResetPayload{
+		UserID:    userID,
+		Email:     cred.Email,
+		Timestamp: time.Now().Unix(),
+	}
+	if r := s.repo.Append(ctx, eventID, domain.EventPasswordReset, payload); r.IsError() {
+		slog.Warn("auth: password reset — failed to append event", "user_id", userID, "err", r.Error())
+	}
+
+	// Publish to RabbitMQ
+	s.publisher.Publish(ctx, event.Event{
+		Type:    domain.EventPasswordReset,
+		Payload: map[string]interface{}{
+			"user_id":    userID,
+			"email":      cred.Email,
+			"timestamp":  payload.Timestamp,
+			"event_id":   eventID.Hex(),
+		},
+	})
+
+	slog.Info("auth: password reset — new password generated, sessions invalidated, event published",
+		"user_id", userID, "email", cred.Email, "event_id", eventID.Hex())
+	return mo.Ok(newPassword)
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) mo.Result[domain.Session] {

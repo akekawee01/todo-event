@@ -66,3 +66,10 @@ export async function verifyCaptcha(id: string, answer: number): Promise<void> {
     body: JSON.stringify({ answer }),
   }))
 }
+
+export async function resetPassword(id: string): Promise<{ new_password: string }> {
+  return handle(await fetch(`/api/users/${id}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }))
+}

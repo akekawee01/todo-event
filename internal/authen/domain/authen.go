@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	EventLoggedIn  = "auth.logged_in"
-	EventLoggedOut = "auth.logged_out"
+	EventLoggedIn      = "auth.logged_in"
+	EventLoggedOut     = "auth.logged_out"
+	EventPasswordReset = "auth.password_reset"
 )
 
 type Credential struct {
@@ -41,4 +42,10 @@ type LoggedInPayload struct {
 type LoggedOutPayload struct {
 	SessionID bson.ObjectID `bson:"session_id" json:"session_id"`
 	Token     string        `bson:"token"      json:"token"`
+}
+
+type PasswordResetPayload struct {
+	UserID    string `bson:"user_id" json:"user_id"`
+	Email     string `bson:"email"    json:"email"`
+	Timestamp int64  `bson:"timestamp" json:"timestamp"`
 }
