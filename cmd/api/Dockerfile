@@ -4,10 +4,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/onboarding ./cmd/onboarding
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/onboarding /onboarding
+COPY --from=build /out/api /api
 USER nonroot:nonroot
-EXPOSE 3003
-ENTRYPOINT ["/onboarding"]
+EXPOSE 3000
+ENTRYPOINT ["/api"]

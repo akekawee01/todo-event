@@ -7,8 +7,10 @@ Modular monolith with Ports & Adapters architecture, append-only persistence, an
 | Service | Port | Role |
 |---|---|---|
 | `cmd/api` | `3000` | Auth (`/auth/*`), tasks (`/tasks/*`), health (`/health`). Consumes `user.activated` to create credentials. MongoDB. |
-| `cmd/onboarding` | `3002` | User registration & onboarding flow (`/users/*`), captcha (`/captcha/*`). Credit scoring and welcome logging run in-process. **MySQL + MongoDB**. |
-| `services/audit_fastapi` | `3003` | FastAPI audit service. Consumes `task.events` and `onboarding.events`, forwards audit entries to Loki, exposes `/health`. |
+| `cmd/onboarding` | `3003` | User registration & onboarding flow (`/users/*`), captcha (`/captcha/*`). Credit scoring and welcome logging run in-process. **MySQL + MongoDB**. |
+| `services/audit_fastapi` | `3004` | FastAPI audit service. Consumes `task.events` and `onboarding.events`, forwards audit entries to Loki, exposes `/health`. |
+| `web/vue` | `5173` | Task UI. Proxies `/api/*` to `cmd/api`. |
+| `web/onboarding` | `5174` | Onboarding UI. Proxies user/captcha requests to `cmd/onboarding`. |
 
 ## Architecture
 
@@ -26,7 +28,7 @@ HTTP from the browsers, fanout pub/sub over RabbitMQ between services, **per-ser
             │ /tasks/*    /auth/login    │                      │
             ▼                            ▼                      ▼
    ┌──────────────────┐      ┌───────────────────────────────────────────┐
-   │  cmd/api :3000   │      │           cmd/onboarding :3002            │
+   │  cmd/api :3000   │      │           cmd/onboarding :3003            │
    │  auth · tasks    │      │  users · captcha · credit(in-proc)        │
    │  health          │      │  welcome-logging(in-proc)                 │
    │  [MongoDB]       │      │  [MySQL + MongoDB]                        │
@@ -137,9 +139,9 @@ If omitted:
 - `MYSQL_DSN` defaults to `todoe:todoe@tcp(localhost:3306)/todoe_onboarding?parseTime=true&multiStatements=true`
 - `LOKI_URL` defaults to `http://localhost:3100`
 
-## Start Infrastructure
+## Start Everything
 
-Run MongoDB, MySQL, RabbitMQ, Loki, Grafana:
+Run the full stack:
 
 ```bash
 docker compose up -d
@@ -153,13 +155,17 @@ Exposed ports:
 - RabbitMQ management UI: `15672` (guest/guest)
 - Loki: `3100`
 - Grafana: `3001` (container `3000`)
-- Audit FastAPI: `3003`
+- Task UI: `5173`
+- Onboarding UI: `5174`
+- API: `3000`
+- Onboarding API: `3003`
+- Audit FastAPI: `3004`
 
 ## Run Services Locally
 
 ```bash
 go run ./cmd/api          # :3000  auth, tasks, health
-go run ./cmd/onboarding   # :3002  users, captcha, credit scoring, welcome logging
+go run ./cmd/onboarding   # :3003  users, captcha, credit scoring, welcome logging
 ```
 
 Run the FastAPI audit service from another terminal:
@@ -169,7 +175,7 @@ cd services/audit_fastapi
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 3003
+uvicorn app.main:app --host 0.0.0.0 --port 3004
 ```
 
 `cmd/api`, `cmd/onboarding`, and the audit service connect to RabbitMQ on startup. `cmd/api` and `cmd/onboarding` also use MongoDB, and `cmd/onboarding` additionally uses MySQL.
@@ -191,10 +197,11 @@ bun run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+When both frontends run in Docker Compose, open the onboarding UI at [http://localhost:5174](http://localhost:5174).
 
 ## Walk the onboarding flow
 
-With all three services and the onboarding UI running, open [http://localhost:5173](http://localhost:5173) and step through:
+With the stack running, open [http://localhost:5174](http://localhost:5174) and step through:
 
 1. **Register** — fill in name + email.
 2. **Captcha** — solve the math challenge.
@@ -224,13 +231,13 @@ open http://localhost:15672      # guest / guest
 
 ```bash
 curl http://localhost:3000/health
-curl http://localhost:3003/health
+curl http://localhost:3004/health
 ```
 
 ### Manual audit event
 
 ```bash
-curl -X POST http://localhost:3003/audit/events \
+curl -X POST http://localhost:3004/audit/events \
   -H 'Content-Type: application/json' \
   -d '{"type":"audit.manual","payload":{"source":"curl"}}'
 ```

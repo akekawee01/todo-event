@@ -82,7 +82,7 @@ services:
     container_name: todoe-onboarding
     restart: unless-stopped
     ports:
-      - "3002:3002"
+      - "3003:3003"
     environment:
       MYSQL_DSN: todoe:todoe@tcp(mysql:3306)/todoe_onboarding?parseTime=true&multiStatements=true
       MONGO_URI: mongodb://root:root@mongo:27017
@@ -95,6 +95,23 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  api:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile
+    container_name: todoe-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: mongodb://root:root@mongo:27017
+      AMQP_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   audit:
     build:
       context: .
@@ -102,7 +119,7 @@ services:
     container_name: todoe-audit
     restart: unless-stopped
     ports:
-      - "3003:3003"
+      - "3004:3004"
     environment:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672/
       LOKI_URL: http://loki:3100
@@ -110,6 +127,32 @@ services:
       rabbitmq:
         condition: service_healthy
       loki:
+        condition: service_started
+
+  task-ui:
+    build:
+      context: .
+      dockerfile: web/vue/Dockerfile
+    container_name: todoe-task-ui
+    restart: unless-stopped
+    ports:
+      - "5173:8080"
+    depends_on:
+      api:
+        condition: service_started
+
+  onboarding-ui:
+    build:
+      context: .
+      dockerfile: web/onboarding/Dockerfile
+    container_name: todoe-onboarding-ui
+    restart: unless-stopped
+    ports:
+      - "5174:8080"
+    depends_on:
+      api:
+        condition: service_started
+      onboarding:
         condition: service_started
 
 volumes:
