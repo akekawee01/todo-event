@@ -116,11 +116,20 @@ func (s *Service) UpdateContact(ctx context.Context, id, name, email, bio string
 		return mo.Err[domain.User](ErrEmailTaken)
 	}
 	next := current.MustGet().WithContact(name, email, bio)
+
+	// Update users_view synchronously so the data is immediately available
+	if r := s.repo.UpdateContact(ctx, id, name, email, bio); r.IsError() {
+		return mo.Err[domain.User](r.Error())
+	}
+
+	// Append event to event store for audit trail
 	payload := domain.ProfileUpdatedPayload{UserID: id, Name: name, Email: email, Bio: bio}
 	if r := s.repo.Append(ctx, id, domain.EventProfileUpdated, payload); r.IsError() {
 		return mo.Err[domain.User](r.Error())
 	}
-	s.publisher.Publish(ctx, event.Event{Type: domain.EventProfileUpdated, Payload: next})
+
+	// Publish only user ID to RabbitMQ; consumers will fetch full data via REST API
+	s.publisher.Publish(ctx, event.Event{Type: domain.EventProfileUpdated, Payload: domain.ProfileUpdatedByIDPayload{UserID: id}})
 	return mo.Ok(next)
 }
 

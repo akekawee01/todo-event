@@ -88,6 +88,17 @@ ON DUPLICATE KEY UPDATE
 	return mo.Ok(struct{}{})
 }
 
+func (r *MySQLRepository) UpdateContact(ctx context.Context, id, name, email, bio string) mo.Result[struct{}] {
+	_, err := r.db.ExecContext(ctx, `
+UPDATE users_view
+SET name = ?, email = ?, bio = ?
+WHERE id = ?`, name, email, bio, id)
+	if err != nil {
+		return mo.Err[struct{}](err)
+	}
+	return mo.Ok(struct{}{})
+}
+
 func (r *MySQLRepository) FindByID(ctx context.Context, id string) mo.Result[domain.User] {
 	var u domain.User
 	err := r.db.GetContext(ctx, &u, `

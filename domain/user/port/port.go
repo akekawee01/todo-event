@@ -26,6 +26,7 @@ type Repository interface {
 	FindByEmail(ctx context.Context, email string) mo.Result[domain.User]
 	FindActivated(ctx context.Context) mo.Result[[]domain.User]
 	FindEvents(ctx context.Context, aggregateID string) mo.Result[[]domain.UserEvent]
+	UpdateContact(ctx context.Context, id, name, email, bio string) mo.Result[struct{}]
 }
 
 type Publisher interface {

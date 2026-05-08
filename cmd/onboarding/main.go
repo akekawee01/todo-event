@@ -142,8 +142,16 @@ func main() {
 		return nil
 	})
 	userBus.Subscribe(userdomain.EventProfileUpdated, func(_ context.Context, e event.Event) error {
-		user, _ := e.Payload.(userdomain.User)
-		slog.Info("profile updated", "user_id", user.ID, "name", user.Name, "email", user.Email)
+		// Try new format: just user ID
+		if newPayload, ok := e.Payload.(userdomain.ProfileUpdatedByIDPayload); ok {
+			slog.Info("profile updated", "user_id", newPayload.UserID)
+			return nil
+		}
+		// Fallback: old format with full user object
+		if user, ok := e.Payload.(userdomain.User); ok {
+			slog.Info("profile updated", "user_id", user.ID, "name", user.Name, "email", user.Email)
+			return nil
+		}
 		return nil
 	})
 

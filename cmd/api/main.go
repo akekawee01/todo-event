@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/samber/mo"
@@ -38,6 +40,32 @@ func (m *multiPublisher) Publish(ctx context.Context, e event.Event) {
 	for _, p := range m.publishers {
 		p.Publish(ctx, e)
 	}
+}
+
+// fetchUserFromOnboarding retrieves user data from the onboarding service via REST API
+func fetchUserFromOnboarding(userID string) (*userdomain.User, error) {
+	onboardingURL := os.Getenv("ONBOARDING_URL")
+	if onboardingURL == "" {
+		onboardingURL = "http://onboarding:3003"
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(onboardingURL + "/users/" + userID)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, err
+	}
+
+	var user userdomain.User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 func main() {
@@ -99,6 +127,7 @@ func main() {
 	authenHandler := authenhttp.NewHandler(authenService)
 
 	// user.activated arrives from cmd/onboarding via RabbitMQ → create auth credential
+	// user.profile_updated arrives as user ID only → fetch full data from onboarding service
 	if err := messaging.Subscribe(ch, messaging.UserExchange, messaging.QueueAuthenUserEvents, func(msg messaging.Message) {
 		if msg.Type != userdomain.EventUserActivated && msg.Type != userdomain.EventProfileUpdated {
 			return
@@ -114,14 +143,33 @@ func main() {
 				slog.Error("api: user.activated credential creation failed", "err", r.Error())
 			}
 		case userdomain.EventProfileUpdated:
-			var p userdomain.User
-			if err := json.Unmarshal(msg.Payload, &p); err != nil {
-				slog.Error("api: user.profile_updated unmarshal", "err", err)
+			// Try new format: just user ID
+			var newPayload userdomain.ProfileUpdatedByIDPayload
+			if err := json.Unmarshal(msg.Payload, &newPayload); err == nil {
+				// Fetch full user data from onboarding service
+				user, err := fetchUserFromOnboarding(newPayload.UserID)
+				if err != nil {
+					slog.Error("api: user.profile_updated fetch from onboarding failed", "user_id", newPayload.UserID, "err", err)
+					return
+				}
+				if r := authenService.UpdateUserProfile(context.Background(), user.ID, user.Email, user.Name); r.IsError() {
+					slog.Error("api: user.profile_updated credential update failed", "err", r.Error())
+				} else {
+					slog.Info("api: user.profile_updated credential updated", "user_id", user.ID, "email", user.Email, "name", user.Name)
+				}
 				return
 			}
-			if r := authenService.UpdateUserProfile(context.Background(), p.ID, p.Email, p.Name); r.IsError() {
-				slog.Error("api: user.profile_updated credential update failed", "err", r.Error())
+
+			// Fallback: try old format with full user object (backward compatibility)
+			var oldPayload userdomain.User
+			if err := json.Unmarshal(msg.Payload, &oldPayload); err == nil {
+				if r := authenService.UpdateUserProfile(context.Background(), oldPayload.ID, oldPayload.Email, oldPayload.Name); r.IsError() {
+					slog.Error("api: user.profile_updated credential update failed", "err", r.Error())
+				}
+				return
 			}
+
+			slog.Error("api: user.profile_updated unmarshal failed for both formats")
 		}
 	}); err != nil {
 		log.Fatal("rabbit subscribe authen.user.events:", err)

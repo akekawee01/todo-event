@@ -73,6 +73,10 @@ type ContactUpdatedPayload struct {
 
 type ProfileUpdatedPayload = ContactUpdatedPayload
 
+type ProfileUpdatedByIDPayload struct {
+	UserID string `json:"user_id"`
+}
+
 type UserEvent struct {
 	ID          string          `db:"id"           json:"id"`
 	AggregateID string          `db:"aggregate_id" json:"aggregate_id"`
