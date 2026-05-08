@@ -98,15 +98,19 @@ services:
   audit:
     build:
       context: .
-      dockerfile: cmd/audit/Dockerfile
+      dockerfile: services/audit_fastapi/Dockerfile
     container_name: todoe-audit
     restart: unless-stopped
+    ports:
+      - "3003:3003"
     environment:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672/
       LOKI_URL: http://loki:3100
     depends_on:
       rabbitmq:
         condition: service_healthy
+      loki:
+        condition: service_started
 
 volumes:
   mongo-data:

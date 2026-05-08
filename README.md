@@ -4,11 +4,11 @@ Modular monolith with Ports & Adapters architecture, append-only persistence, an
 
 ## Services
 
-| Binary | Port | Role |
+| Service | Port | Role |
 |---|---|---|
 | `cmd/api` | `3000` | Auth (`/auth/*`), tasks (`/tasks/*`), health (`/health`). Consumes `user.activated` to create credentials. MongoDB. |
 | `cmd/onboarding` | `3002` | User registration & onboarding flow (`/users/*`), captcha (`/captcha/*`). Credit scoring and welcome logging run in-process. **MySQL + MongoDB**. |
-| `cmd/audit` | — | Forwards `task.events` and `onboarding.events` to Loki. |
+| `services/audit_fastapi` | `3003` | FastAPI audit service. Consumes `task.events` and `onboarding.events`, forwards audit entries to Loki, exposes `/health`. |
 
 ## Architecture
 
@@ -36,13 +36,13 @@ HTTP from the browsers, fanout pub/sub over RabbitMQ between services, **per-ser
    ╔═════════════════════════════════════════════════════════════╗
    ║                         RabbitMQ                            ║
    ║                                                             ║
-   ║  task.events       ─► audit.task.events    ─► cmd/audit     ║
-   ║  onboarding.events ─► audit.user.events    ─► cmd/audit     ║
+   ║  task.events       ─► audit.task.events    ─► audit_fastapi ║
+   ║  onboarding.events ─► audit.user.events    ─► audit_fastapi ║
    ║  user.events       ─► authen.user.events   ─► cmd/api       ║
    ╚═════════════════════════════════════════════════════════════╝
                                                       │
                                              ┌────────▼─────────┐
-                                             │    cmd/audit     │
+                                             │  audit FastAPI   │
                                              │    → Loki :3100  │
                                              └────────┬─────────┘
                                                       ▼
@@ -153,16 +153,26 @@ Exposed ports:
 - RabbitMQ management UI: `15672` (guest/guest)
 - Loki: `3100`
 - Grafana: `3001` (container `3000`)
+- Audit FastAPI: `3003`
 
-## Run Services (3 terminals)
+## Run Services Locally
 
 ```bash
 go run ./cmd/api          # :3000  auth, tasks, health
 go run ./cmd/onboarding   # :3002  users, captcha, credit scoring, welcome logging
-go run ./cmd/audit        #        forwards task + onboarding events to Loki
 ```
 
-Each binary connects to RabbitMQ on startup; `cmd/api` and `cmd/onboarding` also use MongoDB, and `cmd/onboarding` additionally uses MySQL.
+Run the FastAPI audit service from another terminal:
+
+```bash
+cd services/audit_fastapi
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 3003
+```
+
+`cmd/api`, `cmd/onboarding`, and the audit service connect to RabbitMQ on startup. `cmd/api` and `cmd/onboarding` also use MongoDB, and `cmd/onboarding` additionally uses MySQL.
 
 ## Run Frontends (optional)
 
@@ -214,6 +224,15 @@ open http://localhost:15672      # guest / guest
 
 ```bash
 curl http://localhost:3000/health
+curl http://localhost:3003/health
+```
+
+### Manual audit event
+
+```bash
+curl -X POST http://localhost:3003/audit/events \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"audit.manual","payload":{"source":"curl"}}'
 ```
 
 ## Build & Test
@@ -229,7 +248,8 @@ Cross-domain events flow through RabbitMQ fanout exchanges with durable queues a
 
 | Exchange | Queue | Consumer |
 |---|---|---|
-| `task.events` | `audit.task.events` | `cmd/audit` |
+| `task.events` | `audit.task.events` | `services/audit_fastapi` |
+| `onboarding.events` | `audit.user.events` | `services/audit_fastapi` |
 | `user.events` | `welcome.user.events` | `cmd/welcome` |
 | `user.events` | `credit.user.events` | `cmd/credit` |
 | `user.events` | `authen.user.events` | `cmd/api` (creates credential on `user.activated`) |
@@ -263,11 +283,11 @@ go run -tags 'mysql' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1 \
 
 - Grafana: [http://localhost:3001](http://localhost:3001)
 - Loki datasource is provisioned from `provisioning/`.
-- Audit events are pushed by `cmd/audit` into Loki.
+- Audit events are pushed by `services/audit_fastapi` into Loki.
 
 ## Stop Everything
 
-Ctrl-C the six Go processes (and any frontends), then:
+Ctrl-C any local backend/frontend processes, then:
 
 ```bash
 docker compose down            # keeps volumes

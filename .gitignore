@@ -11,6 +11,12 @@
 *.out
 /vendor/
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
 # Environment / secrets
 .env
 .env.*
