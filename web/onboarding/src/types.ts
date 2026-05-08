@@ -11,6 +11,7 @@ export interface User {
   email: string
   bio: string
   status: UserStatus
+  verification_token: string
   credit_score: number
   credit_approved: boolean
   created_at: string

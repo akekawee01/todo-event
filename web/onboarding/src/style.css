@@ -227,6 +227,50 @@ body {
   border-radius: 3px;
 }
 
+.token-panel {
+  background: #F4F7FB;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 20px;
+}
+.token-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.token-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.btn-token {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--blue);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-token:hover { background: #E8F0FF; }
+
 /* ── Credit check ────────────────────────────────── */
 .credit-waiting {
   display: flex;

@@ -1,10 +1,15 @@
 <template>
   <div class="step-card">
     <div class="card-title">Verify your email</div>
-    <div class="card-desc">Check the onboarding service logs for your verification token.</div>
+    <div class="card-desc">Use the demo verification token generated for this registration.</div>
 
-    <div class="info-row">
-      Check <code>cmd/onboarding</code> logs — the token was printed when you registered.
+    <div v-if="props.user.verification_token" class="token-panel">
+      <div class="token-label">Demo token</div>
+      <div class="token-row">
+        <code>{{ props.user.verification_token }}</code>
+        <button class="btn-token" @click="copyToken">{{ copied ? 'Copied' : 'Copy' }}</button>
+        <button class="btn-token" @click="token = props.user.verification_token">Use</button>
+      </div>
     </div>
 
     <div class="form-field">
@@ -30,6 +35,16 @@ const emit = defineEmits<{ done: [user: User] }>()
 const token = ref('')
 const loading = ref(false)
 const error = ref('')
+const copied = ref(false)
+
+async function copyToken(): Promise<void> {
+  if (!props.user.verification_token) return
+  await navigator.clipboard.writeText(props.user.verification_token)
+  copied.value = true
+  window.setTimeout(() => {
+    copied.value = false
+  }, 1200)
+}
 
 async function submit(): Promise<void> {
   if (!token.value.trim()) return
