@@ -28,9 +28,11 @@ func DeclareExchange(ch *amqp.Channel, name string) error {
 }
 
 const (
-	QueueAuditTaskEvents = "audit.task.events"
-	QueueAuthenUserEvents = "authen.user.events"
-	QueueAuditUserEvents  = "audit.user.events"
+	QueueAuditTaskEvents    = "audit.task.events"
+	QueueAuditUserEvents    = "audit.user.domain.events"
+	QueueAuditAuthEvents    = "audit.auth.events"
+	QueueAuditCaptchaEvents = "audit.captcha.events"
+	QueueAuthenUserEvents   = "authen.user.events"
 )
 
 type Binding struct {

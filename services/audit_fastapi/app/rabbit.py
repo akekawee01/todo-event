@@ -10,6 +10,7 @@ import pika
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
+from app.cache import AuditCache
 from app.config import Binding
 from app.loki import LokiClient
 
@@ -22,10 +23,12 @@ class RabbitAuditConsumer:
         amqp_url: str,
         bindings: tuple[Binding, ...],
         loki: LokiClient,
+        cache: AuditCache,
     ) -> None:
         self._amqp_url = amqp_url
         self._bindings = bindings
         self._loki = loki
+        self._cache = cache
         self._stop = threading.Event()
         self._connected = False
         self._connection: pika.BlockingConnection | None = None
@@ -114,6 +117,7 @@ class RabbitAuditConsumer:
 
         try:
             logger.info("audit received event type=%s", event_type)
+            self._cache.append(event_type, payload, method.exchange)
             self._loki.push(event_type, payload)
         except Exception:
             logger.exception("failed to push audit event to loki")

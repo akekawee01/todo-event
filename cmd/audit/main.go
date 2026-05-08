@@ -70,7 +70,7 @@ func main() {
 		log.Fatal("rabbit subscribe:", err)
 	}
 
-	if err := messaging.Subscribe(ch, messaging.OnboardingExchange, messaging.QueueAuditUserEvents, func(msg messaging.Message) {
+	if err := messaging.Subscribe(ch, messaging.UserExchange, messaging.QueueAuditUserEvents, func(msg messaging.Message) {
 		slog.Info("audit: received event", "type", msg.Type)
 		if err := pushToLoki(lokiURL, msg.Type, msg.Payload); err != nil {
 			slog.Error("audit: loki push", "err", err)
@@ -79,7 +79,30 @@ func main() {
 		log.Fatal("rabbit subscribe:", err)
 	}
 
-	slog.Info("audit service listening", "exchange", messaging.TaskExchange, "exchange", messaging.OnboardingExchange)
+	if err := messaging.Subscribe(ch, messaging.AuthExchange, messaging.QueueAuditAuthEvents, func(msg messaging.Message) {
+		slog.Info("audit: received event", "type", msg.Type)
+		if err := pushToLoki(lokiURL, msg.Type, msg.Payload); err != nil {
+			slog.Error("audit: loki push", "err", err)
+		}
+	}); err != nil {
+		log.Fatal("rabbit subscribe:", err)
+	}
+
+	if err := messaging.Subscribe(ch, messaging.CaptchaExchange, messaging.QueueAuditCaptchaEvents, func(msg messaging.Message) {
+		slog.Info("audit: received event", "type", msg.Type)
+		if err := pushToLoki(lokiURL, msg.Type, msg.Payload); err != nil {
+			slog.Error("audit: loki push", "err", err)
+		}
+	}); err != nil {
+		log.Fatal("rabbit subscribe:", err)
+	}
+
+	slog.Info("audit service listening",
+		"exchange", messaging.TaskExchange,
+		"exchange", messaging.UserExchange,
+		"exchange", messaging.AuthExchange,
+		"exchange", messaging.CaptchaExchange,
+	)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

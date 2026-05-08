@@ -2,12 +2,13 @@ from contextlib import asynccontextmanager
 import logging
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Query, Request, status
 
+from app.cache import AuditCache
 from app.config import load_settings
 from app.loki import LokiClient
 from app.rabbit import RabbitAuditConsumer
-from app.schemas import AuditEvent, HealthResponse
+from app.schemas import AuditEvent, AuditRecordResponse, HealthResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -16,10 +17,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = load_settings()
     loki = LokiClient(settings.loki_url)
-    consumer = RabbitAuditConsumer(settings.amqp_url, settings.bindings, loki)
+    cache = AuditCache(settings.cache_size)
+    consumer = RabbitAuditConsumer(settings.amqp_url, settings.bindings, loki, cache)
 
     app.state.settings = settings
     app.state.loki = loki
+    app.state.cache = cache
     app.state.consumer = consumer
 
     consumer.start()
@@ -43,10 +46,28 @@ def health(request: Request) -> HealthResponse:
         rabbit_connected=consumer.connected,
         loki_url=settings.loki_url,
         queues=[binding.queue for binding in settings.bindings],
+        cached_events=request.app.state.cache.count(),
     )
 
 
 @app.post("/audit/events", status_code=status.HTTP_202_ACCEPTED)
 def record_event(event: AuditEvent, request: Request) -> dict[str, str]:
+    request.app.state.cache.append(event.type, event.payload, "http")
     request.app.state.loki.push(event.type, event.payload)
     return {"status": "accepted"}
+
+
+@app.get("/audit/events", response_model=list[AuditRecordResponse])
+def list_events(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[AuditRecordResponse]:
+    return [
+        AuditRecordResponse(
+            event_type=record.event_type,
+            payload=record.payload,
+            source=record.source,
+            created_at=record.created_at.isoformat(),
+        )
+        for record in request.app.state.cache.list(limit)
+    ]

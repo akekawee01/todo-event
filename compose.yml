@@ -28,7 +28,7 @@ services:
     volumes:
       - rabbit-data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -123,6 +123,7 @@ services:
     environment:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672/
       LOKI_URL: http://loki:3100
+      AUDIT_CACHE_SIZE: 500
     depends_on:
       rabbitmq:
         condition: service_healthy

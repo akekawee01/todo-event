@@ -8,7 +8,7 @@ Modular monolith with Ports & Adapters architecture, append-only persistence, an
 |---|---|---|
 | `cmd/api` | `3000` | Auth (`/auth/*`), tasks (`/tasks/*`), health (`/health`). Consumes `user.activated` to create credentials. MongoDB. |
 | `cmd/onboarding` | `3003` | User registration & onboarding flow (`/users/*`), captcha (`/captcha/*`). Credit scoring and welcome logging run in-process. **MySQL + MongoDB**. |
-| `services/audit_fastapi` | `3004` | FastAPI audit service. Consumes `task.events` and `onboarding.events`, forwards audit entries to Loki, exposes `/health`. |
+| `services/audit_fastapi` | `3004` | FastAPI audit service. Consumes all domain event exchanges, caches recent audit entries, forwards them to Loki, exposes `/health`. |
 | `web/vue` | `5173` | Task UI. Proxies `/api/*` to `cmd/api`. |
 | `web/onboarding` | `5174` | Onboarding UI. Proxies user/captcha requests to `cmd/onboarding`. |
 
@@ -38,9 +38,11 @@ HTTP from the browsers, fanout pub/sub over RabbitMQ between services, **per-ser
    ╔═════════════════════════════════════════════════════════════╗
    ║                         RabbitMQ                            ║
    ║                                                             ║
-   ║  task.events       ─► audit.task.events    ─► audit_fastapi ║
-   ║  onboarding.events ─► audit.user.events    ─► audit_fastapi ║
-   ║  user.events       ─► authen.user.events   ─► cmd/api       ║
+   ║  task.events       ─► audit.task.events      ─► audit_fastapi ║
+   ║  user.events       ─► audit.user.domain.events ─► audit_fastapi ║
+   ║  auth.events       ─► audit.auth.events      ─► audit_fastapi ║
+   ║  captcha.events    ─► audit.captcha.events   ─► audit_fastapi ║
+   ║  user.events       ─► authen.user.events     ─► cmd/api       ║
    ╚═════════════════════════════════════════════════════════════╝
                                                       │
                                              ┌────────▼─────────┐
@@ -131,6 +133,7 @@ MYSQL_DSN=todoe:todoe@tcp(localhost:3306)/todoe_onboarding?parseTime=true&multiS
 
 # Audit service
 LOKI_URL=http://localhost:3100
+AUDIT_CACHE_SIZE=500
 ```
 
 If omitted:
@@ -138,6 +141,7 @@ If omitted:
 - `AMQP_URL` defaults to `amqp://guest:guest@localhost:5672/`
 - `MYSQL_DSN` defaults to `todoe:todoe@tcp(localhost:3306)/todoe_onboarding?parseTime=true&multiStatements=true`
 - `LOKI_URL` defaults to `http://localhost:3100`
+- `AUDIT_CACHE_SIZE` defaults to `500`
 
 ## Start Everything
 
@@ -232,6 +236,7 @@ open http://localhost:15672      # guest / guest
 ```bash
 curl http://localhost:3000/health
 curl http://localhost:3004/health
+curl http://localhost:3004/audit/events
 ```
 
 ### Manual audit event
@@ -256,11 +261,10 @@ Cross-domain events flow through RabbitMQ fanout exchanges with durable queues a
 | Exchange | Queue | Consumer |
 |---|---|---|
 | `task.events` | `audit.task.events` | `services/audit_fastapi` |
-| `onboarding.events` | `audit.user.events` | `services/audit_fastapi` |
-| `user.events` | `welcome.user.events` | `cmd/welcome` |
-| `user.events` | `credit.user.events` | `cmd/credit` |
+| `user.events` | `audit.user.domain.events` | `services/audit_fastapi` |
+| `auth.events` | `audit.auth.events` | `services/audit_fastapi` |
+| `captcha.events` | `audit.captcha.events` | `services/audit_fastapi` |
 | `user.events` | `authen.user.events` | `cmd/api` (creates credential on `user.activated`) |
-| `credit.results` | `onboarding.credit.results` | `cmd/onboarding` |
 
 Inspect queues, bindings, and ready/unacked counts at [http://localhost:15672](http://localhost:15672) (guest/guest).
 

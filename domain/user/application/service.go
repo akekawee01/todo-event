@@ -23,15 +23,14 @@ var (
 )
 
 type Service struct {
-	repo         port.Repository
-	publisher    port.Publisher
-	amqPublisher port.Publisher
+	repo      port.Repository
+	publisher port.Publisher
 }
 
 var _ port.UseCase = (*Service)(nil)
 
-func NewService(repo port.Repository, publisher port.Publisher, amqPublisher port.Publisher) *Service {
-	return &Service{repo: repo, publisher: publisher, amqPublisher: amqPublisher}
+func NewService(repo port.Repository, publisher port.Publisher) *Service {
+	return &Service{repo: repo, publisher: publisher}
 }
 
 func (s *Service) Register(ctx context.Context, name, email string) mo.Result[domain.User] {
@@ -56,7 +55,6 @@ func (s *Service) Register(ctx context.Context, name, email string) mo.Result[do
 		CreatedAt:         time.Now(),
 	}
 	s.publisher.Publish(ctx, event.Event{Type: domain.EventRegistered, Payload: user})
-	s.amqPublisher.Publish(ctx, event.Event{Type: domain.EventRegistered, Payload: user})
 	return mo.Ok(user)
 }
 
@@ -145,14 +143,6 @@ func (s *Service) CompleteProfile(ctx context.Context, id, bio string) mo.Result
 	}
 	s.publisher.Publish(ctx, event.Event{Type: domain.EventProfileCompleted, Payload: next})
 	s.publisher.Publish(ctx, event.Event{
-		Type: domain.EventUserActivated,
-		Payload: domain.UserActivatedPayload{
-			UserID: next.ID,
-			Email:  next.Email,
-			Name:   next.Name,
-		},
-	})
-	s.amqPublisher.Publish(ctx, event.Event{
 		Type: domain.EventUserActivated,
 		Payload: domain.UserActivatedPayload{
 			UserID: next.ID,

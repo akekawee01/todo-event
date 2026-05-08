@@ -74,8 +74,9 @@ func main() {
 	defer conn.Close()
 
 	if err := messaging.DeclareTopology(ch, []messaging.Binding{
-		{Exchange: messaging.OnboardingExchange, Queue: messaging.QueueAuditUserEvents},
+		{Exchange: messaging.UserExchange, Queue: messaging.QueueAuditUserEvents},
 		{Exchange: messaging.UserExchange, Queue: messaging.QueueAuthenUserEvents},
+		{Exchange: messaging.CaptchaExchange, Queue: messaging.QueueAuditCaptchaEvents},
 	}); err != nil {
 		log.Fatal("rabbit topology:", err)
 	}
@@ -98,7 +99,7 @@ func main() {
 		messaging.NewPublisher(ch, messaging.UserExchange),
 	}}
 
-	userService := userapplication.NewService(userRepo, userPublisher, messaging.NewPublisher(ch, messaging.OnboardingExchange))
+	userService := userapplication.NewService(userRepo, userPublisher)
 	userHandler := userhttp.NewHandler(userService)
 
 	// Credit scoring runs in-process: on email_verified → score → RecordCreditScore
@@ -152,7 +153,11 @@ func main() {
 	captchaProjection := captchaadapter.NewProjectionHandler(captchaRepo)
 	captchaBus.Subscribe(captchadomain.EventIssued, captchaProjection)
 	captchaBus.Subscribe(captchadomain.EventVerified, captchaProjection)
-	captchaService := captchaapp.NewService(captchaRepo, captchaBus)
+	captchaPublisher := &multiPublisher{publishers: []event.Publisher{
+		captchaBus,
+		messaging.NewPublisher(ch, messaging.CaptchaExchange),
+	}}
+	captchaService := captchaapp.NewService(captchaRepo, captchaPublisher)
 	captchaHandler := captchahttp.NewHandler(captchaService)
 
 	// ── HTTP ─────────────────────────────────────────────────────────────

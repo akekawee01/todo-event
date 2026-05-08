@@ -14,3 +14,11 @@ class HealthResponse(BaseModel):
     rabbit_connected: bool
     loki_url: str
     queues: list[str]
+    cached_events: int
+
+
+class AuditRecordResponse(BaseModel):
+    event_type: str
+    payload: Any
+    source: str
+    created_at: str

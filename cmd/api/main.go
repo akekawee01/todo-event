@@ -67,6 +67,7 @@ func main() {
 
 	if err := messaging.DeclareTopology(ch, []messaging.Binding{
 		{Exchange: messaging.TaskExchange, Queue: messaging.QueueAuditTaskEvents},
+		{Exchange: messaging.AuthExchange, Queue: messaging.QueueAuditAuthEvents},
 	}); err != nil {
 		log.Fatal("rabbit topology:", err)
 	}
@@ -90,7 +91,11 @@ func main() {
 	authenProjection := authenAdapter.NewProjectionHandler(authenRepo)
 	authenBus.Subscribe(authendomain.EventLoggedIn, authenProjection)
 	authenBus.Subscribe(authendomain.EventLoggedOut, authenProjection)
-	authenService := authenapp.NewService(authenRepo, authenBus)
+	authenPublisher := &multiPublisher{publishers: []event.Publisher{
+		authenBus,
+		messaging.NewPublisher(ch, messaging.AuthExchange),
+	}}
+	authenService := authenapp.NewService(authenRepo, authenPublisher)
 	authenHandler := authenhttp.NewHandler(authenService)
 
 	// user.activated arrives from cmd/onboarding via RabbitMQ → create auth credential
